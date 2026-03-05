@@ -12,8 +12,9 @@ from langchain.tools import tool
 from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 from prompts import return_instructions_root
+import chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
-load_dotenv(Path(__file__).parent / '../.secrets')
 
 # Initialize the chat model
 model = init_chat_model(
@@ -23,6 +24,17 @@ model = init_chat_model(
     api_key='any value',
     default_headers={"x-api-key": os.getenv('API_GATEWAY_KEY')}
 )
+
+# setup chromadb vector store
+embedding_fn = OpenAIEmbeddingFunction(
+        api_key = "any value",
+        model_name="text-embedding-3-small",
+        api_base='https://k7uffyg03f.execute-api.us-east-1.amazonaws.com/prod/openai/v1',
+        default_headers={"x-api-key": os.getenv('API_GATEWAY_KEY')})
+
+
+client = chromadb.PersistentClient(path="./chroma_db")
+collection = client.get_or_create_collection("weather_knowledge", embedding_function=embedding_fn)
 
 # Define tools
 base_url = "http://api.weatherstack.com"
@@ -97,9 +109,20 @@ def get_forecast(location_input:str):
     )
     return report
 
+@tool
+def search_weather_knowledge(query: str):
+    """
+    Searches a knowledge base of weather tips, safety advice, and 
+    general weather-related guidance using semantic similarity.
+    Use this when the user asks for advice, tips, or explanations 
+    rather than current conditions or forecasts.
+    """
+    results = collection.query(query_texts=[query], n_results=3)
+    docs = results["documents"][0]
+    return "\n".join(docs)
 
 # Augment the LLM with tools
-tools = [get_current_weather, get_forecast]
+tools = [get_current_weather, get_forecast,search_weather_knowledge]
 tools_by_name = {tool.name: tool for tool in tools}
 model_with_tools = model.bind_tools(tools)
 
