@@ -1,48 +1,35 @@
+import sys
+from pathlib import Path
+
+# Add parent directory to Python path so we can import utils
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from weather_agent import agent
 from langchain_core.messages import HumanMessage, AIMessage
 import gradio as gr
 from dotenv import load_dotenv
-
-# --- Gradio Chat Interface ---
-
-# def chat(user_message: str, history: list):
-#     """
-#     Takes the new user message and full chat history,
-#     builds the LangGraph message list, invokes the agent,
-#     and returns the assistant's reply.
-#     """
-#     # Convert Gradio history to LangChain messages
-#     lc_messages = []
-#     for human, assistant in history:
-#         lc_messages.append(HumanMessage(content=human))
-#         lc_messages.append(AIMessage(role="assistant", content=assistant))
-
-#     lc_messages.append(HumanMessage(content=user_message))
-
-#     result = agent.invoke({"messages": lc_messages})
-
-#     # The last message is the assistant's final reply
-#     reply = result["messages"][-1].content
-#     return reply
+import os
 
 from utils.logger import get_logger
 
 _logs = get_logger(__name__)
 
-llm = agent.get_graph()
+llm = agent
 
 load_dotenv('.secrets')
 
-def weather_chat(message: str, history: list[dict]) -> str:
+def weather_chat(message: str, history: list) -> str:
     langchain_messages = []
     n = 0
     _logs.debug(f"History: {history}")
-    for msg in history:
-        if msg['role'] == 'user':
-            langchain_messages.append(HumanMessage(content=msg['content']))
-        elif msg['role'] == 'assistant':
-            langchain_messages.append(AIMessage(content=msg['content']))
-            n += 1
+    for msg_pair in history:
+        if isinstance(msg_pair, (list, tuple)) and len(msg_pair) == 2:
+            user_msg, assistant_msg = msg_pair
+            if user_msg:
+                langchain_messages.append(HumanMessage(content=user_msg))
+            if assistant_msg:
+                langchain_messages.append(AIMessage(content=assistant_msg))
+                n += 1
     langchain_messages.append(HumanMessage(content=message))
 
     state = {
@@ -53,7 +40,7 @@ def weather_chat(message: str, history: list[dict]) -> str:
     response = llm.invoke(state)
     return response['messages'][len(response['messages']) - 1].content
 
-
+# --- Gradio Chat Interface ---
 demo = gr.ChatInterface(
     fn=weather_chat,
     title="Weather Agent Chatbot",

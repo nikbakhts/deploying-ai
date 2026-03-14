@@ -6,7 +6,10 @@ from typing import Literal
 import requests
 from dotenv import load_dotenv
 from typing_extensions import TypedDict, Annotated
-from IPython.display import Image, display
+
+# Disable LangSmith tracing to avoid authentication errors
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
 from langchain.chat_models import init_chat_model
 from langchain.tools import tool
 from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage, HumanMessage
@@ -15,6 +18,9 @@ from prompts import return_instructions_root
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
+# Load environment variables from .secrets file
+secrets_path = Path(__file__).parent.parent / '.secrets'
+load_dotenv(secrets_path)
 
 # Initialize the chat model
 model = init_chat_model(
@@ -192,16 +198,6 @@ agent_builder.add_edge("tool_node", "llm_call")
 
 # Compile the agent
 agent = agent_builder.compile()
-
-# Show the agent
-display(Image(agent.get_graph(xray=True).draw_mermaid_png()))
-
-# Invoke
-#messages = [HumanMessage(content="Tell me how the current weather of Los Angeles is."), HumanMessage(content="How's tomorrow's weather in Halifax, Canada?")]
-#messages = agent.invoke({"messages": messages})
-#for m in messages["messages"]:
-#    m.pretty_print()
-
 
 # Build workflow
 agent_builder = StateGraph(MessagesState)
