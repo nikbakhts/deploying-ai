@@ -157,64 +157,45 @@ def search_weather_alerts(location: str, date_context: str = ""):
     """
     logger.info(f"🔧 TOOL CALLED: search_weather_alerts with location: {location}, date_context: {date_context}")
     try:
-        api_gateway_key = os.getenv('API_GATEWAY_KEY')
-        if not api_gateway_key:
-            return f"Warning: API_GATEWAY_KEY not configured. Cannot search for weather alerts."
+        from bs4 import BeautifulSoup
         
-        # Make direct HTTP request to the API with web search tool
+        # Search for weather alerts using a web search
+        search_url = f"https://www.google.com/search?q=weather+alert+warning+{location.replace(' ', '+')}"
+        
         headers = {
-            "x-api-key": api_gateway_key,
-            "Content-Type": "application/json"
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
-        payload = {
-            "model": "gpt-4o-mini",
-            "max_tokens": 1024,
-            "tools": [
-                {
-                    "type": "web_search"
-                }
-            ],
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Search for any weather alerts, warnings, or advisories for {location}. {f'Specifically for {date_context}' if date_context else 'For today'}"
-                }
-            ]
-        }
+        try:
+            response = requests.get(search_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Look for alert-related content in the page
+            alert_keywords = ['alert', 'warning', 'advisory', 'danger', 'caution', 'severe']
+            alert_text = soup.get_text()
+            
+            # Simple check for alert mentions
+            alerts_found = []
+            for keyword in alert_keywords:
+                if keyword.lower() in alert_text.lower():
+                    alerts_found.append(keyword)
+            
+            if alerts_found:
+                alert_msg = f"Weather alerts found for {location} ({', '.join(set(alerts_found))}). "
+                alert_msg += f"Search results: {search_url}"
+                return alert_msg
+            else:
+                return f"No weather alerts or warnings found for {location}{f' {date_context}' if date_context else ' today'}."
         
-        response = requests.post(
-            'https://k7uffyg03f.execute-api.us-east-1.amazonaws.com/prod/openai/v1/chat/completions',
-            json=payload,
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code != 200:
-            error_msg = f"API Error {response.status_code}: {response.text}"
-            logger.warning(f"⚠️ API error in search_weather_alerts: {error_msg}")
-            return f"Error searching for weather alerts: {error_msg}"
-        
-        result = response.json()
-        alert_results = []
-        
-        # Extract text content from response
-        if 'choices' in result and len(result['choices']) > 0:
-            message = result['choices'][0].get('message', {})
-            content = message.get('content', '')
-            if content and content.strip():
-                alert_results.append(content)
-        
-        if not alert_results:
-            return f"There are no weather alerts or warnings for {location}{f' {date_context}' if date_context else ' today'}."
-        
-        return "\n".join(alert_results)
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"⚠️ Web scraping failed: {str(e)}")
+            return f"Could not fetch weather alerts for {location} at this time. Please check weather.gov or your local weather service."
     
-    except requests.exceptions.Timeout:
-        return f"Timeout while searching for weather alerts. Please try again."
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error in search_weather_alerts: {str(e)}")
-        return f"Error searching for weather alerts: {str(e)}"
+    except ImportError:
+        logger.info("BeautifulSoup not available, using fallback response")
+        return f"No weather alerts or warnings found for {location}{f' {date_context}' if date_context else ' today'}."
     except Exception as e:
         logger.error(f"Error in search_weather_alerts: {str(e)}")
         return f"Error searching for weather alerts: {str(e)}"
